@@ -6,10 +6,81 @@ import "log"
 import "github.com/rue92/tsh/twitch"
 import ui "github.com/gizak/termui"
 
+const (
+	R_GAMES = iota
+	R_STREAMS
+)
+
 type ShellState struct {
-	currentOffset uint32
-	currentLimit  uint8
-	lastTotal     uint32
+	pager Pager
+}
+
+type Pager interface {
+	next() interface{}
+	prev() interface{}
+	current() interface{}
+}
+
+type Requester struct {
+	offset uint32
+	limit  uint8
+	total  uint32
+	name   string
+}
+
+type GameRequester Requester
+type StreamRequester Requester
+
+func (requester *GameRequester) next() interface{} {
+	var games []twitch.Game
+	requester.offset += uint32(requester.limit)
+	if requester.offset > requester.total {
+		requester.offset = 0
+	}
+	games, requester.total = twitch.GetGames(requester.limit, requester.offset)
+	return games
+}
+
+func (requester *GameRequester) prev() interface{} {
+	var games []twitch.Game
+	requester.offset -= uint32(requester.limit)
+	if requester.offset > requester.total {
+		requester.offset = requester.total - uint32(requester.limit)
+	}
+	games, requester.total = twitch.GetGames(requester.limit, requester.offset)
+	return games
+}
+
+func (requester *GameRequester) current() interface{} {
+	var games []twitch.Game
+	games, requester.total = twitch.GetGames(requester.limit, requester.offset)
+	return games
+}
+
+func (requester *StreamRequester) next() interface{} {
+	var streams []twitch.Stream
+	requester.offset += uint32(requester.limit)
+	if requester.offset > requester.total {
+		requester.offset = 0
+	}
+	streams, requester.total = twitch.GetStreams(requester.limit, requester.offset)
+	return streams
+}
+
+func (requester *StreamRequester) prev() interface{} {
+	var streams []twitch.Stream
+	requester.offset -= uint32(requester.limit)
+	if requester.offset > requester.total {
+		requester.offset = requester.total - uint32(requester.limit)
+	}
+	streams, requester.total = twitch.GetStreams(requester.limit, requester.offset)
+	return streams
+}
+
+func (requester *StreamRequester) current() interface{} {
+	var streams []twitch.Stream
+	streams, requester.total = twitch.GetStreams(requester.limit, requester.offset)
+	return streams
 }
 
 func main() {
@@ -28,6 +99,9 @@ func main() {
 		"[1] Games",
 		"[2] Channels",
 		"[3] Followed"}
+	gameRequester := GameRequester{0, 24, 0, "Games"}
+	streamRequester := StreamRequester{0, 24, 0, "Streams"}
+	state := ShellState{&gameRequester}
 
 	ls := ui.NewList()
 	ls.Items = strs
@@ -35,20 +109,16 @@ func main() {
 	ls.BorderLabel = "Choices"
 	ls.Height = len(strs) + 2
 	ls.Width = ui.TermWidth()
-	//	ls.Y = 0
 
 	results := ui.NewList()
 	results.Height = ui.TermHeight() - len(strs) - 2
 	results.Width = ui.TermWidth()
-	state := ShellState{0, uint8(ui.TermHeight() - len(strs) - 2), 0}
-	var games []twitch.Game
-	games, state.lastTotal = twitch.GetGames(state.currentLimit, state.currentOffset)
-	results.Items = twitch.GamesToStrings(games)
-	results.BorderLabel = "Games"
+	results.Items = twitch.GamesToStrings(state.pager.current().([]twitch.Game))
+	results.BorderLabel = gameRequester.name
 
 	logPar := ui.NewPar(state.String())
 	logPar.BorderLabel = "State"
-	logPar.Height = 4
+	logPar.Height = len(strs) + 2
 
 	ui.Body.AddRows(
 		ui.NewRow(
@@ -59,44 +129,35 @@ func main() {
 	ui.Body.Align()
 
 	ui.Handle("/sys/kbd/r", func(ui.Event) {
-		var games []twitch.Game
-		games, state.lastTotal = twitch.GetGames(state.currentLimit, state.currentOffset)
-		results.Items = twitch.GamesToStrings(games)
+		results.Items = RequestToString(state.pager.current())
 		logPar.Text = state.String()
 		ui.Clear()
 		ui.Render(ui.Body)
 	})
 	ui.Handle("/sys/kbd/1", func(ui.Event) {
-		var games []twitch.Game
-		games, state.lastTotal = twitch.GetGames(state.currentLimit, state.currentOffset)
-		results.Items = twitch.GamesToStrings(games)
+		state.pager = &gameRequester
+		results.Items = RequestToString(state.pager.current())
+		results.BorderLabel = gameRequester.name
 		logPar.Text = state.String()
 		ui.Clear()
 		ui.Render(ui.Body)
 	})
 	ui.Handle("/sys/kbd/n", func(ui.Event) {
-		var games []twitch.Game
-		state.currentOffset += uint32(state.currentLimit)
-		games, state.lastTotal = twitch.GetGames(state.currentLimit, state.currentOffset)
-		results.Items = twitch.GamesToStrings(games)
+		results.Items = RequestToString(state.pager.next())
 		logPar.Text = state.String()
 		ui.Clear()
 		ui.Render(ui.Body)
 	})
 	ui.Handle("/sys/kbd/p", func(ui.Event) {
-		state.currentOffset -= uint32(state.currentLimit)
-		if state.currentOffset > state.lastTotal {
-			state.currentOffset = 0
-		}
-		var games []twitch.Game
-		games, state.lastTotal = twitch.GetGames(state.currentLimit, state.currentOffset)
-		results.Items = twitch.GamesToStrings(games)
+		results.Items = RequestToString(state.pager.prev())
 		logPar.Text = state.String()
 		ui.Clear()
 		ui.Render(ui.Body)
 	})
 	ui.Handle("/sys/kbd/2", func(ui.Event) {
-		results.Items = twitch.StreamsToStrings(twitch.GetStreams())
+		state.pager = &streamRequester
+		results.Items = RequestToString(state.pager.current())
+		results.BorderLabel = streamRequester.name
 		logPar.Text = state.String()
 		ui.Clear()
 		ui.Render(ui.Body)
@@ -109,5 +170,23 @@ func main() {
 }
 
 func (state ShellState) String() string {
-	return fmt.Sprintf("Offset: %d, Limit: %d, LastTotal: %d", state.currentOffset, state.currentLimit, state.lastTotal)
+	return fmt.Sprintf("%s", state.pager)
+}
+
+func (requester GameRequester) String() string {
+	return fmt.Sprintf("Offset: %d, Limit: %d, Total: %d", requester.offset, requester.limit, requester.total)
+}
+
+func (requester StreamRequester) String() string {
+	return fmt.Sprintf("Offset: %d, Limit: %d, Total: %d", requester.offset, requester.limit, requester.total)
+}
+
+func RequestToString(data interface{}) []string {
+	switch request := data.(type) {
+	case []twitch.Game:
+		return twitch.GamesToStrings(request)
+	case []twitch.Stream:
+		return twitch.StreamsToStrings(request)
+	}
+	return make([]string, 1)
 }

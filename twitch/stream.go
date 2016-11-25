@@ -3,12 +3,14 @@ package twitch
 import "time"
 import "fmt"
 import "log"
+import "strconv"
 import "encoding/json"
 import "net/http"
 import "io/ioutil"
 
 type StreamRequest struct {
 	Streams []Stream `json:"streams"`
+	Total   uint32   `json:"_total"`
 }
 
 type Channel struct {
@@ -66,7 +68,7 @@ func GetStream(user string) (stream Stream) {
 	return request.Streams[0]
 }
 
-func GetStreams() (streams []Stream) {
+func GetStreams(limit uint8, offset uint32) (streams []Stream, total uint32) {
 	client := &http.Client{}
 	streamUrl := TwitchApiBaseUrl + "streams/"
 	req, err := http.NewRequest("GET", streamUrl, nil)
@@ -75,6 +77,10 @@ func GetStreams() (streams []Stream) {
 	}
 	req.Header.Add("Accept", "application/vnd.twitchtv.v3+json")
 	req.Header.Add("Client-ID", TshClientId)
+	q := req.URL.Query()
+	q.Add("offset", strconv.FormatUint(uint64(offset), 10))
+	q.Add("limit", strconv.FormatUint(uint64(limit), 10))
+	req.URL.RawQuery = q.Encode()
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Couldn't perform HTTP request")
@@ -90,7 +96,7 @@ func GetStreams() (streams []Stream) {
 	if err != nil {
 		panic("Error unmarshaling JSON")
 	}
-	return request.Streams
+	return request.Streams, request.Total
 }
 
 func GetRequestFromJson(body []byte) (*StreamRequest, error) {
