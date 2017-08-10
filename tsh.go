@@ -103,6 +103,8 @@ func main() {
 	}
 	defer ui.Close()
 
+	ReadConfig()
+
 	strs := []string{
 		"[1] Top Games",
 		"[2] Top Streams",
