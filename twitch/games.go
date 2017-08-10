@@ -1,52 +1,38 @@
 package twitch
 
-import "log"
-import "encoding/json"
-import "io/ioutil"
-import "fmt"
-import "net/http"
-import "strconv"
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+)
 
-type GamesRequest struct {
+type gamesRequest struct {
 	Games      []Game `json:"top"`
 	TotalGames uint32 `json:"_total"`
 }
 
+// Game represents information regarding a Game
 type Game struct {
 	Info     GameInfo `json:"game"`
 	Viewers  uint64   `json:"viewers"`
 	Channels uint64   `json:"channels"`
 }
 
+// GameInfo contains the name and unique ID of a game
 type GameInfo struct {
 	Name string `json:"name"`
-	Id   uint64 `json:"_id"`
+	ID   uint64 `json:"_id"`
 }
 
+// GetGames retrieves a number of games limited to the specified amount
+// starting from the given offset of top results
 func GetGames(limit uint8, offset uint32) (games []Game, total uint32) {
-	client := &http.Client{}
-	topGamesUrl := TwitchApiBaseUrl + "games/top/"
-	req, err := http.NewRequest("GET", topGamesUrl, nil)
-	if err != nil {
-		log.Println("Couldn't create request")
+	params := map[string]string{
+		"offset": strconv.FormatUint(uint64(offset), 10),
+		"limit":  strconv.FormatUint(uint64(limit), 10),
 	}
-	req.Header.Add("Accept", "application/vnd.twitchtv.v3+json")
-	req.Header.Add("Client-ID", TshClientId)
-	q := req.URL.Query()
-	q.Add("offset", strconv.FormatUint(uint64(offset), 10))
-	q.Add("limit", strconv.FormatUint(uint64(limit), 10))
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Println("Couldn't perform HTTP request")
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Println("Couldn't read message body")
-	}
+	body, err := SendRequest(http.MethodGet, "games/top", params)
 
 	request, err := unmarshalGames(body)
 	if err != nil {
@@ -55,16 +41,17 @@ func GetGames(limit uint8, offset uint32) (games []Game, total uint32) {
 	return request.Games, request.TotalGames
 }
 
-func unmarshalGames(body []byte) (*GamesRequest, error) {
-	var req = new(GamesRequest)
+func unmarshalGames(body []byte) (*gamesRequest, error) {
+	var req = new(gamesRequest)
 	err := json.Unmarshal(body, &req)
 	return req, err
 }
 
-func (request GamesRequest) String() string {
+func (request gamesRequest) String() string {
 	return fmt.Sprintf("Request: %s\n", request.Games)
 }
 
+// GamesToStrings converts a slice of Games into a slice of their string representations
 func GamesToStrings(games []Game) []string {
 	toStrings := make([]string, len(games), len(games))
 	for i := range games {
