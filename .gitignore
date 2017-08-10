@@ -28,3 +28,6 @@ _testmain.go
 
 # external packages folder
 vendor/
+
+# log file for this executable
+tsh.log
