@@ -117,18 +117,30 @@ func main() {
 	ls.Items = strs
 	ls.ItemFgColor = ui.ColorYellow
 	ls.BorderLabel = "Choices"
-	ls.Height = len(strs) + 2
-	ls.Width = ui.TermWidth()
 
 	results := ui.NewList()
-	results.Height = ui.TermHeight() - len(strs) - 2
-	results.Width = ui.TermWidth()
 	results.Items = twitch.GamesToStrings(state.pager.current().([]twitch.Game))
 	results.BorderLabel = gameRequester.name
 
 	logPar := ui.NewPar(state.String())
 	logPar.BorderLabel = "State"
-	logPar.Height = len(strs) + 2
+
+	var scale = func() {
+		var numResults = ui.TermHeight() - len(strs) - 2
+		gameRequester.limit = uint8(numResults)
+		streamRequester.limit = uint8(numResults)
+		
+		ls.Height = len(strs) + 2
+		ls.Width = ui.TermWidth()
+		
+		results.Width = ui.TermWidth()
+		results.Height = numResults
+
+		logPar.Height = len(strs) + 2
+
+		ui.Body.Width = ui.TermWidth()
+	}
+	scale()
 
 	ui.Body.AddRows(
 		ui.NewRow(
@@ -178,6 +190,15 @@ func main() {
 	})
 	ui.Handle("/sys/kbd/q", func(e ui.Event) {
 		ui.StopLoop()
+	})
+
+	ui.Handle("/sys/wnd/resize", func(e ui.Event) {
+		scale()
+		ui.Body.Align()
+		if state.pager.pagerType() == streams ||
+			state.pager.pagerType() == games {
+			refresh(e)
+		}
 	})
 
 	ui.Merge("/timer/2s", ui.NewTimerCh(time.Second*2))
