@@ -19,6 +19,7 @@ type shellState struct {
 }
 
 type pager interface {
+	first() interface{}
 	next() interface{}
 	prev() interface{}
 	current() interface{}
@@ -34,6 +35,14 @@ type requester struct {
 
 type gameRequester requester
 type streamRequester requester
+
+func (requester *gameRequester) first() interface{} {
+	var games []twitch.Game
+	requester.offset = 0
+	games, requester.total = twitch.GetGames(requester.limit, requester.offset)
+	return games
+}
+
 
 func (requester *gameRequester) next() interface{} {
 	var games []twitch.Game
@@ -62,6 +71,13 @@ func (requester *gameRequester) current() interface{} {
 }
 
 func (requester *gameRequester) pagerType() pagerEnum { return games }
+
+func (requester *streamRequester) first() interface{} {
+	var streams []twitch.Stream
+	requester.offset = 0
+	streams, requester.total = twitch.GetStreams(requester.limit, requester.offset)
+	return streams
+}
 
 func (requester *streamRequester) next() interface{} {
 	var streams []twitch.Stream
@@ -175,6 +191,10 @@ func main() {
 		logPar.Text = state.String()
 		ui.Clear()
 		ui.Render(ui.Body)
+	})
+	ui.Handle("/sys/kbd/f", func(e ui.Event) {
+		results.Items = requestToString(state.pager.first())
+		refresh(e)
 	})
 	ui.Handle("/sys/kbd/n", func(e ui.Event) {
 		results.Items = requestToString(state.pager.next())
